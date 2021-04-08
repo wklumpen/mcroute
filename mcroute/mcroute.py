@@ -14,6 +14,14 @@ class MatrixIntegrityError(Exception):
 
 
 class Network(nx.DiGraph):
+    """The base network class for MCRoute analysis.
+
+    A Network stores nodes and edges, and holds a copy of the state space for
+    internal analysis.
+
+    :param state_space: The state space under which the network is built.
+    :type state_space: :class:`mcroute.StateSpace`
+    """    
     def __init__(self, state_space):
         super().__init__()
 
@@ -22,15 +30,42 @@ class Network(nx.DiGraph):
         # Check for positive states
         self._state_space = state_space
 
-    def add_node(self, name, matrix):
-        super().add_node(name, matrix=_check_matrix(matrix))
+    def add_node(self, name, matrix, data=None):
+        """Add a node to the network
+
+        Args:
+            name (node): The node name. It can be any Python object except None
+            matrix (numpy.Array): A matrix of transition probabilities to attach
+            to the node.
+            data (keyword arguments, optional): Se or change attributes using
+            key=value pairs. Defaults to None.
+        """        
+        if data:
+            super().add_node(name, matrix=_check_matrix(matrix), **data)
+        else:
+            super().add_node(name, matrix=_check_matrix(matrix)) 
     
-    def add_edge(self, u, v, matrix):
-        super().add_edge(u, v, matrix=_check_matrix(matrix))
+    def add_edge(self, u, v, matrix, data=None):
+        """Add an edge between u and v.
+
+        The nodes u and v must exist in the graph already. Edge attributes can
+        be specified by passing a dictionary to the data argument.
+
+        Args:
+            u, v (nodes): Nodes must be existing, named nodes on the network.
+            
+            matrix (numpy.Array): The matrix to attach to the edge.
+            
+            data (keyword arguments, optional): Se or change attributes using
+            key=value pairs. Defaults to None.
+        """        
+        if data:
+            super().add_edge(u, v, matrix=_check_matrix(matrix), **data)
+        else:
+            super().add_edge(u, v, matrix=_check_matrix(matrix))
     
     def traverse(self, nodes, starting_vector):
-        """
-        Traverse a path along a prescribed set of nodes
+        """Traverse a path along a prescribed set of nodes
 
         The function evolves the `starting_vector` across a provided series of 
         nodes and edges, keeping track of each probability distribution along 
@@ -39,7 +74,7 @@ class Network(nx.DiGraph):
         Args:
             nodes (list): A list of node names to traverse along
             starting_vector (numpy.Array): A starting probability distribution
-                from which to evolve.
+            from which to evolve.
 
         Returns:
             list of numpy.Array: A list of probability distribution vectors at 
@@ -59,29 +94,62 @@ class Network(nx.DiGraph):
         
         return(vecs)
 
-    def trajectory(self, nodes, starting_vector):
-        vecs = self.traverse(nodes, starting_vector)
-        states = self._state_space.values
-        run = []
-        for v in vecs:
-            val = np.random.choice(states, p=v)
-            run.append(val)
-        return run
+    def trajectories(self, nodes, starting_vector, n=1, smoothing=None):
+        """Get a set of trajectories for a given path and initial probabilities.
 
-    def trajectories(self, nodes, starting_vector, n=1):
+        The trajectories are sampled from the distributions resulting from
+        the evoluation of the intial ``starting_vector`` probability
+        distribution. Trajectories can be smoothed by limiting the total size
+        of the jump possible from one state to another.
+
+        :param nodes: A list of nodes to traverse over as a path.
+        :type nodes: list of node names
+        :param starting_vector: The initial probability distribution vector.
+        :type starting_vector: :class:`numpy.array`
+        :param n: The number of trajectories to generate, defaults to 1
+        :type n: int, optional
+        :param smoothing: The smoothing parameter, defaults to None
+        :type smoothing: numeric (int, float), optional
+        :return: A list of state values sampled.
+        :rtype: list
+        """        
         vecs = self.traverse(nodes, starting_vector)
-        states = self._state_space.values
         runs = []
         for i in range(n):
-            run = []
-            for v in vecs:
-                val = np.random.choice(states, p=v)
-                run.append(val)
-            runs.append(run)
-        return runs
-
+            runs.append(self._get_trajectory(vecs, smoothing))
+        if n == 1:
+            return runs[0]
+        else:
+            return runs
+    
+    def _get_trajectory(self, vecs, smoothing):
+        run = []
+        for idx, v in enumerate(vecs):
+            val = np.random.choice(self._state_space.values, p=v)
+            # If it's not the first value and smoothing is turned on
+            if idx > 0 and smoothing >= 0:
+                jump = val - run[-1]
+                if abs(jump) > smoothing:
+                    if jump < 0:
+                        val = run[-1] - smoothing
+                    else:
+                        val = run[-1] + smoothing
+            run.append(val)
+        return run
+        
 
 class StateSpace:
+    """The state space class representing a Markov chain state space.
+
+    A state space consists of a list of State objects containing two fields, a
+    value (for numerical analysis) and a label (for reference and readability).
+    
+    .. note::
+        State space names and values must be unique.
+
+    :param states: A list of :class:`mcroute.States`
+    :type state_space: list
+    """    
     def __init__(self, states):
         if len(states) <= 1:
             raise SizeError("State spaces must have more than one item")
@@ -96,11 +164,54 @@ class StateSpace:
     
     @classmethod
     def from_list(cls, name_list, value_list):
+        """Create a state space from a list of names and a list of values.
+
+        :param name_list: The list of state labels or names
+        :type name_list: list
+        :param value_list: The list of values for numerical analysis or use
+        :type value_list: list
+        :raises DataError: :exc:`mcroute.DataError`
+        :return: A constructed state space.
+        :rtype: :class:`mcroute.StateSpace`
+        """
+        if len(name_list) != len(value_list):
+            raise DataError("State name and value lists must be the same length")      
         states = [State(i[0], i[1]) for i in zip(name_list, value_list)]
         return cls(states)
     
     @classmethod
+    def from_range(cls, low_state, high_state, interval=1):
+        """Create a state space from a range of numbers.
+
+        This method will create a state space with matching values and labels
+        (i.e. a value of -2 will have a label of '-2'). Much like Python's own
+        `range()` function, the high state is **not incldued**.
+
+        :param low_state: The lower bound of the state space
+        :type low_state: int
+        :param high_state: The upper bound of the state space (not included)
+        :type high_state: int
+        :param interval: The interval between state values, defaults to 1
+        :type interval: int, optional
+        :return: A constructed state space.
+        :rtype: :class:`mcroute.StateSpace`
+        """        
+        states = []
+        for i in range(low_state, high_state, interval):
+            states.append(State(str(i), float(i)))
+        return cls(states)
+
+    @classmethod
     def from_csv(cls, filepath):
+        """Create a state space from a CSV file. The file must have two columns,
+        the first being the name of the state, the second being the value
+        associated with that name.
+
+        :param filepath: The path to the CSV file containing the states
+        :type filepath: str
+        :return: A constructed state space
+        :rtype: :class:`mcroute.StateSpace`
+        """        
         with open(filepath, 'r') as infile:
             reader = csv.reader(infile)
             name_list = []
@@ -112,33 +223,79 @@ class StateSpace:
         return cls.from_list(name_list, value_list)
 
     def value_at(self, name):
+        """Get the value of a state with a given name.
+
+        :param name: The name of the state to look up.
+        :type name: str
+        :return: The value of the state looked up.
+        :rtype: numeric (float, int)
+        """        
         return self.values[self.index_at(name)]
     
     def index_at(self, name):
+        """Get the index of a state with a given name.
+
+        :param name: The name of the state to look up.
+        :type name: str
+        :return: The value of the state looked up.
+        :rtype: numeric (float, int)
+        """        
         return self.names.index(name)
     
     @property
     def states(self):
+        """Get the state objects in the state space.
+
+        :return: A list of states in the state space.
+        :rtype: list of :class:`mcroute.State`
+        """         
         return self._states
     
     @property
     def values(self):
+        """Get the state values in the state space.
+
+        :return: A list of values in the state space.
+        :rtype: list of numeric (int, float) values
+        """  
         return [s._value for s in self._states]
     
     @property
     def names(self):
+        """Get the state names in the state space.
+
+        :return: A list of names in the state space.
+        :rtype: list of str
+        """  
         return [s._name for s in self._states]
     
     @property
     def size(self):
+        """The number of states in the state space.
+
+        :return: The size of the state space.
+        :rtype: int
+        """        
         return len(self.states)
 
     @property
     def mean(self):
+        """The mean state value in the state space.
+
+        :return: The mean value of all state values.
+        :rtype: float
+        """        
         return float(sum([i._value for i in self._states]))/len(self._states)
 
 
 class State:
+    """The class containing information about a state.
+
+    :param name: The state's name
+    :type name: str
+    :param value: The state's value
+    :type value: A numeric (int, float) value.
+    """    
     def __init__(self, name, value):
         self._name = name
         self._value = float(value)

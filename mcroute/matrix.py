@@ -1,19 +1,42 @@
+"""
+Matrix construction and manipulation functions for MCRoute networks.
+
+This module contains methods that enable the constructing of matrices needed to
+construct a MCRoute network. Typically, these methods require a defined
+:class:`mcroute.StateSpace` object which is used to provide context for building
+distributions, reading files, or validating data. Matrices produced by this
+module are validated and can be used for any node or edge creation. For example:
+
+.. code-block:: Python
+
+    from mcroute import StateSpace
+    import mcroute.matrix as matrix
+
+    space = StateSpace.from_range(-2, 3)
+    matrix.uniform(space)
+
+will produce a uniformly distributed matrix of dimension 5. All matrix creation
+methods in this module will return :class:`numpy.array` objects.
+"""
 import csv
 import numpy as np
+
 import scipy.stats as sp
+import networkx as nx
+
 from mcroute.mcroute import DataError
 
 
 def uniform(state_space):
-    """
-    Create a probability transition matrix with uniform probability
-    distributions accross all rows.
+    """Create a unfiromally distributed transition probability matrix.
 
-    Args:
-        state_space (StateSpace): The state space under which to build the matrix
+    The resulting probability transition matrix will have equal probabilities
+    accross all state transitions.
 
-    Returns:
-        numpy.array: A matrix of transition probabilities
+    :param state_space: The state space under which to build the matrix
+    :type state_space: :class:`mcroute.StateSpace`
+    :return: A matrix of transition probabilities
+    :rtype: :class:`numpy.array`
     """
     p = 1.0/state_space.size
     mx = []
@@ -25,24 +48,24 @@ def uniform(state_space):
 
 
 def truncnorm(state_space, mean=0, std=1):
-    """
-    Create a truncated normally distributed transition matrix across a given
+    """Create a truncated normally distributed transition matrix accross a given
     state space.
 
-    The mean and standard deviations used in these calculations refer to state
-    transition values. This means that a mean of zero centers the normal
+    The mean and standard deviations used in these calculations refer to `state
+    transition values`. This means that a mean of zero centers the normal
     distribtuion around no state change (a delta of zero). Note that this
     probability distribution is truncated so that any probabilities that fall
     outside the possible transition space in each row are redistributed accross
     all probabilities within the allowed domain.
 
-    Args:
-        state_space (StateSpace): The state space under which to build the matrix
-        mean (int, optional): The mean state transition value. Defaults to 0.
-        std (int, optional): The standard deviation transition value. Defaults to 1.
-
-    Returns:
-        numpy.array: A matrix of transition probabilities
+    :param state_space: The state space under which to build the matrix
+    :type state_space: :class:`mcroute.StateSpace`
+    :param mean: The mean value of the distribtuion, defaults to 0
+    :type mean: int, optional
+    :param std: The standard deviation of the distribution, defaults to 1
+    :type std: int, optional
+    :return: A transition probability matrix
+    :rtype: :class:`numpy.array`
     """
     # Start by grabbing the state_values.
     state_values = state_space.values
@@ -50,63 +73,112 @@ def truncnorm(state_space, mean=0, std=1):
     for r in range(state_space.size):
         # The mean is that the delta between states is zero.
         # Get the first state jump
-        row = []
+        rowData = []
 
         # Most negative jump possible
         a = state_values[0] - state_values[r]
         # Most positive jump possible
         b = state_values[-1] - state_values[r]
         for c in range(state_space.size):
-            if c == 0: # First State
-                p = sp.truncnorm.cdf(state_values[c] - state_values[r], a, b,  loc=mean, scale=std)
+            row = state_values[r]
+            col = state_values[c]
+            if c < state_space.size-1:
+                col = state_values[c]
+                if c == 0: # First State
+                    p = sp.truncnorm.cdf(col - row, a, b,  loc=mean, scale=std)
+                else:  # Do the 'normal' thing
+                    p = sp.truncnorm.cdf(col - row, a, b, loc=mean, scale=std) - \
+                        sp.truncnorm.cdf(state_values[c-1] - row, a, b, loc=mean, scale=std)
             elif c == state_space.size:  # Last state
-                p = 1-sp.truncnorm.cdf(state_values[c] - state_values[r], a, b, loc=mean, scale=std)
-            else:  # Do the 'normal' thing
-                p = sp.truncnorm.cdf(state_values[c] - state_values[r], a, b, loc=mean, scale=std) - \
-                    sp.truncnorm.cdf(state_values[c-1] - state_values[r], a, b, loc=mean, scale=std)
-            row.append(p)
-        row[-1] = 1.0 - sum(row[:-1])
-        mtx.append(row)
+                    p = 1-sp.truncnorm.cdf(col - row, a, b, loc=mean, scale=std)
+            rowData.append(p)
+        print(sum(rowData[:-1]))
+        rowData[-1] = 1.0 - sum(rowData[:-1])
+        mtx.append(rowData)
         # print(f"Starting at {state_values[r]}: Domain {a} to {b}, sum {sum(row)}")
     return np.array(mtx)
 
 
 def identity(state_space):
-    """
-    Create a probability transition matrix as an identity matrix.
+    """Create an identity probability transition matrix.
 
-    An identity matrix has a probability of 1.0 along the diagonal, and zero
+    An identity matrix has probabilities of 1.0 along the diagonal, and zero
     everywhere else.
 
-    Args:
-        state_space (StateSpace): The state space under which to build the matrix
-
-    Returns:
-        numpy.array: A matrix of transition probabilities
+    :param state_space: The state space under which to build the matrix.
+    :type state_space: :class:`mcroute.StateSpace`
+    :return: An identity matrix of transition probabilities.
+    :rtype: :class:`numpy.array`
     """
     mtx = []
     for r in range(state_space.size):
         mtx.append([0.0 if c != r else 1.0 for c in range(state_space.size)])
     return np.array(mtx)
 
+def truncate_below(state_space, matrix, treshold_state_name):
+    """Truncate a probability transition matrix below a given state
+
+    :param state_space: The state space under which to act on the matrix
+    :type state_space: :py:class:`mcroute.StateSpace`
+    :param matrix: The matrix to truncate
+    :type matrix: :class:`numpy.array`
+    :param treshold_state_name: The name of the state at which to truncate
+    :type treshold_state_name: str
+    :return: A truncated matrix of transition probabilities
+    :rtype: :class:`numpy.array`
+    """
+    idx = state_space.names.index(treshold_state_name)
+    mx = []
+    for r in range(state_space.size):
+        row = []
+        for c in range(state_space.size):
+            if c < idx:
+                row.append(0.0)
+            elif c == idx:
+                row.append(matrix[r][c] + sum(matrix[r][:idx]))
+            else:
+                row.append(matrix[r][c])
+        mx.append(row)
+    return np.array(mx)
+
+def shift(matrix, idx=0):
+    """Update a matrix with probabilities shifted by an index amount.
+
+    Each row in the matrix will have probabilities that are shifted by the
+    indiex provided. Probabilities that are 'pushed off' the edge are reassigned
+    to the ends of the distribution (the edge states), so truncation effects are
+    possible.
+
+    :param matrix: The matrix to update
+    :type matrix: :class:`numpy.array`
+    :param idx: The number of indices to shift the distribution by, 
+        defaults to 0
+    :type idx: int, optional
+    :return: The shifted matrix
+    :rtype: :class:`numpy.array`
+    """
+    mx = []
+    for row in matrix:
+        newRow = [0.0 for i in range(len(row))]
+        for c, col in enumerate(row):
+            ## Keep the index in the probability
+            newIdx = min(max(c + idx , 0), len(row)-1)
+            newRow[newIdx] += col
+        mx.append(newRow)
+    return np.array(mx)
+
 
 def from_csv(state_space, filepath):
-    """
-    Create a transition probability matrix using values stored in a CSV file
+    """Create a transition probability matrix using values stored in a CSV file
 
-    The file must have equal rows and columns, and the number of rows and
-    columns must match the size of the state space provided. Each row in the
-    CSV file must also sum to 1.0.
-
-    Args:
-        filepath (str): The path to the file
-        state_space (StateSpace): The state space under which to build the matrix
-
-    Raises:
-        DataError: An error will be thrown if the matrix size is invalid
-
-    Returns:
-        numpy.array: A matrix of transition probabilities
+    :param state_space: The state space under which to create the matrix
+    :type state_space: :class:`mcroute.StateSpace`
+    :param filepath: The filepath to the matrix values
+    :type filepath: str
+    :raises: :exc:`mcroute.DataError` - An error will be thrown if the matrix 
+        size is invalid.
+    :return: The created matrix.
+    :rtype: :class:`np.Array`
     """
     with open(filepath, 'r') as infile:
         reader = csv.reader(infile)
@@ -120,15 +192,28 @@ def from_csv(state_space, filepath):
     return np.array(mx)
 
 def from_state_delta_csv(state_space, filepath):
-    """Creates a matrix based on a set of state transition delta indices.
-    These transition deltas are integers, and indicate moving ahead or 
-    behind a given reference state of a row. These values will be used
-    for all rows in a transition matrix, shifted by the row index. For
-    example, a value of '-2' will indicate a transition of two state indices
-    backwards, regardless of the state types or names. This is useful for static
-    matrices or where the data is assumed to apply accross all origin states
-    regardless of the current state (transition magnitutdes are not wholly
-    dependent on the origin state)."""
+    """Create a matrix using a set of state transition data.
+
+    Transition data must be in the form of integers represending how many
+    incidces a state transition shifted during the transition. Positive values
+    shift forward on the state space, negative values shift backwards.
+
+    For example, a value of '-2' indicates a transition of two state indices
+    backwards, regardless of state values or names.
+
+    :param state_space: The state space under which to construct the matrix
+    :type state_space: :class:`mcroute.StateSpace`
+    :param filepath: The filepath containing the state transitions.
+    :type filepath: str
+    :raises: :exc:`ZeroDivisionError` - Will throw an error when a state transition row
+        is missing data, resulting in a zero division during normalization.
+    :return: The populated matrix.
+    :rtype: :class:`np.Array`
+
+    .. note::
+        This method effectively assumes that state transition values are evenly
+        spaced. Use with caution under other conditions.
+    """
     # Start with an empty matrix
     mtx = [[0.0 for i in range(state_space.size)] for j in range(state_space.size)]
     delta_dict = dict()
@@ -197,4 +282,44 @@ def from_state_delta_csv(state_space, filepath):
                 each = diff/len(mtx[r])
                 for c in range(len(mtx[r])):
                     mtx[r][c] += each
+
+        # Final correction
+        mtx[r][-1] = 1.0 - sum(mtx[r][:-1])
     return np.array(mtx)
+
+def absorbing_classes(matrix):
+    """Summarize the absorbing classes for a given matrix.
+
+    Absorbing classes are sets of one or more states that once entered, cannot
+    leave. In certain cases, these absorbing classes can be indicative of data
+    issues or design issues in the matrices.
+    
+    :param matrix: The matrix to examine
+    :type matrix: :class:`numpy.array`
+    :return: A list of sets of absorbing classes in the matrix, by index.
+    :rtype: list
+    """    
+    g = nx.from_numpy_matrix(np.array(matrix), create_using=nx.DiGraph())
+    internal = set()
+
+    # Tarjan is approximately linear O(|V| + |E|)
+    cpts = list(nx.strongly_connected_components(g))
+    for cpt in cpts:
+        sg = g.subgraph(cpt)
+        for e in sg.edges:
+            internal.add(e)
+
+    # find all the edges that aren't part of the strongly connected components
+    # ~ O(E)
+    transient_edges = set(g.edges()) - internal
+    # find the start of the directed edge leading out from a component
+    # ~ O(E)
+    transient_srcs = set([e[0] for e in transient_edges])
+
+    # Assemble everything that don't have a vertex in transient_srcs
+    abs_classes = []
+    for sg in cpts:
+        if transient_srcs - sg:
+            abs_classes.append(sg)
+
+    return abs_classes
