@@ -1,4 +1,0 @@
-Reference
-=========
-
-**Release**: |release|

@@ -64,6 +64,22 @@ class Network(nx.DiGraph):
         else:
             super().add_edge(u, v, matrix=_check_matrix(matrix))
     
+    def multi_step(self, nodes):
+        """Return a multi-step transition probability matrix for a set of
+        nodes.
+
+        :param nodes: A list of node names to compute multi-state transitions
+        :type nodes: list
+        :return: A transition probability matrix representing the steps.
+        :rtype: :class:`numpy.array`
+        """
+        mtx = self.nodes[nodes[0]]['matrix']
+        for i in range(1, len(nodes)-1):
+            mtx = np.dot(mtx, self.nodes[nodes[i]]['matrix'])
+            mtx = np.dot(mtx, self.edges[nodes[i], nodes[i+1]]['matrix'])
+
+        return mtx
+    
     def traverse(self, nodes, starting_vector):
         """Traverse a path along a prescribed set of nodes
 
@@ -71,14 +87,10 @@ class Network(nx.DiGraph):
         nodes and edges, keeping track of each probability distribution along 
         the way.
 
-        Args:
-            nodes (list): A list of node names to traverse along
-            starting_vector (numpy.Array): A starting probability distribution
-            from which to evolve.
-
-        Returns:
-            list of numpy.Array: A list of probability distribution vectors at 
-            each stage of traversal.
+        :param nodes: A list of node names to traverse along
+        :type nodes: list
+        :param starting_vector: A starting probability distribution
+        :type starting_vector: :class:`numpy.array`
         """
         vecs = []
         vec = starting_vector
@@ -136,7 +148,7 @@ class Network(nx.DiGraph):
                         val = run[-1] + smoothing
             run.append(val)
         return run
-        
+
 
 class StateSpace:
     """The state space class representing a Markov chain state space.

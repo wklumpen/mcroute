@@ -110,10 +110,7 @@ def identity(state_space):
     :return: An identity matrix of transition probabilities.
     :rtype: :class:`numpy.array`
     """
-    mtx = []
-    for r in range(state_space.size):
-        mtx.append([0.0 if c != r else 1.0 for c in range(state_space.size)])
-    return np.array(mtx)
+    return np.eye(state_space.size)
 
 def truncate_below(state_space, matrix, treshold_state_name):
     """Truncate a probability transition matrix below a given state
@@ -323,3 +320,12 @@ def absorbing_classes(matrix):
             abs_classes.append(sg)
 
     return abs_classes
+
+def steady_state(matrix):
+    dim = matrix.shape[0]
+    q = (matrix-np.eye(dim))
+    ones = np.ones(dim)
+    q = np.c_[q, ones]
+    QTQ = np.dot(q, q.T)
+    bQT = np.ones(dim)
+    return np.linalg.solve(QTQ,bQT)

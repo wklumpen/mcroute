@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Generalized Markov Chain Modelling for (Transportation) Networks
+Generalized Markov Chain Modelling for Networks
 ================================================================
 
 MCRoute is a Python package that enables the creation, manipulation, and study
@@ -24,22 +24,30 @@ Audience
 This module was originally built to support a theoretical definition and
 reserach paper, but is intended to allow both researchers and practitioners,
 specifically in the field of transportation, to create and analyze Markov chain
-networks. 
+networks. Initial features were deisgned to support specific use cases,
+generally around schedule adherence and path reliability on a transit network.
+This may change as applications are expanded.
 
-Free software
+If there is a particular analysis you would like to do that requires a specific
+feature not yet implemented you can either 
+`suggest a change <https://github.com/wklumpen/mcroute/issues>`_ or attempt an
+implementation yourself.
+
+Free Software
 =============
 MCRoute is free software; you can redistribute it under the terms of the GNU
-General Public License, version 3. We welcome contributors, join us on 
+General Public License, version 3, provided that you extend the same rights
+to those using your software. We welcome contributors, join us on 
 `GitHub <https://github.com/wklumpen/mcroute>`_
 
+Table of Contents
+=================
 .. toctree::
    :maxdepth: 2
 
    installation
    examples
-   reference
-   network
-   matrix
+   reference/index
 
 Indices and tables
 ==================
