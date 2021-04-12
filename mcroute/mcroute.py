@@ -31,14 +31,17 @@ class Network(nx.DiGraph):
         self._state_space = state_space
 
     def add_node(self, name, matrix, data=None):
-        """Add a node to the network
+        """Add a node to the network.
 
-        Args:
-            name (node): The node name. It can be any Python object except None
-            matrix (numpy.Array): A matrix of transition probabilities to attach
-            to the node.
-            data (keyword arguments, optional): Se or change attributes using
-            key=value pairs. Defaults to None.
+        Nodes can include non-matrix data, but must include a matrix.
+
+        :param name: The name of the node. Can be any Python object except none
+
+        :type name: node
+        :param matrix: The matrix of transition probabilites for the node.
+        :type matrix: :class:`numpy.array`
+        :param data: Additional data to attach to the node, defaults to None
+        :type data: dict, optional
         """        
         if data:
             super().add_node(name, matrix=_check_matrix(matrix), **data)
@@ -48,35 +51,44 @@ class Network(nx.DiGraph):
     def add_edge(self, u, v, matrix, data=None):
         """Add an edge between u and v.
 
-        The nodes u and v must exist in the graph already. Edge attributes can
-        be specified by passing a dictionary to the data argument.
+        Nodes u and v must exist in the graph already. Edge attributes can be
+        specified by passing a dictionary of key-value pairs via the data
+        argument.
 
-        Args:
-            u, v (nodes): Nodes must be existing, named nodes on the network.
-            
-            matrix (numpy.Array): The matrix to attach to the edge.
-            
-            data (keyword arguments, optional): Se or change attributes using
-            key=value pairs. Defaults to None.
-        """        
+        :param u: The node from which to start the edge
+        :type u: node
+        :param v: The node to which to end the edge
+        :type v: node
+        :param matrix: The transition probability matrix
+        :type matrix: :class:`numpy.array`
+        :param data: A set of data arguments to store on the edge, defaults to 
+            None
+        :type data: dict, optional
+        :raises DataError: Raises an error if either node is not initialized.
+        """
+        # Need to ensure nodes exist in database:
+        if (u not in self.nodes) or (v not in self.nodes):
+            raise DataError("One or both of the nodes are not in the network.")        
         if data:
             super().add_edge(u, v, matrix=_check_matrix(matrix), **data)
         else:
             super().add_edge(u, v, matrix=_check_matrix(matrix))
     
-    def multi_step(self, nodes):
+    def multi_step(self, path_nodes):
         """Return a multi-step transition probability matrix for a set of
         nodes.
 
-        :param nodes: A list of node names to compute multi-state transitions
-        :type nodes: list
+        :param path_nodes: A list of node names to compute multi-state transitions
+        :type path_nodes: list
         :return: A transition probability matrix representing the steps.
         :rtype: :class:`numpy.array`
         """
-        mtx = self.nodes[nodes[0]]['matrix']
-        for i in range(1, len(nodes)-1):
-            mtx = np.dot(mtx, self.nodes[nodes[i]]['matrix'])
-            mtx = np.dot(mtx, self.edges[nodes[i], nodes[i+1]]['matrix'])
+        mtx = self.nodes[path_nodes[0]]['matrix']
+        for i in range(1, len(path_nodes)-1):
+            u = path_nodes[i]
+            v = path_nodes[i+1]
+            mtx = np.dot(mtx, self.nodes[u]['matrix'])
+            mtx = np.dot(mtx, self.edges[(u, v)]['matrix'])
 
         return mtx
     

@@ -92,10 +92,8 @@ def truncnorm(state_space, mean=0, std=1):
             elif c == state_space.size:  # Last state
                     p = 1-sp.truncnorm.cdf(col - row, a, b, loc=mean, scale=std)
             rowData.append(p)
-        print(sum(rowData[:-1]))
         rowData[-1] = 1.0 - sum(rowData[:-1])
         mtx.append(rowData)
-        # print(f"Starting at {state_values[r]}: Domain {a} to {b}, sum {sum(row)}")
     return np.array(mtx)
 
 
@@ -322,10 +320,30 @@ def absorbing_classes(matrix):
     return abs_classes
 
 def steady_state(matrix):
+    """Determine the steady-state transition probability vector for a matrix.
+
+    The steady-state transition probability vector is a vector that, when
+    multiplied by the provided matrix, returns the same vector. This represents
+    behaviour as the number of transitions trends towards infinity.
+
+    .. note::
+        This method uses a least squares approach to solving the system of
+        equations, which allows for the number of linearly independent rows
+        of the matrix to be less, equal to, or greater than the number of
+        linearly independent columns. Since some transition probability matrices
+        can have multiple solutions (periodic ones, for example), this solution
+        minimizes the Euclidean 2-norm. See numpy's documentation on
+        `numpy.linalg.lstsq` for further details.
+
+    :param matrix: The matrix to calcualte steady-state probabilities for
+    :type matrix: :class:`numpy.array`
+    :return: A steady-state transition probability vector
+    :rtype: :class:`numpy.array` (1-dimensional)
+    """    
     dim = matrix.shape[0]
-    q = (matrix-np.eye(dim))
-    ones = np.ones(dim)
-    q = np.c_[q, ones]
-    QTQ = np.dot(q, q.T)
-    bQT = np.ones(dim)
-    return np.linalg.solve(QTQ,bQT)
+    Q = (matrix-np.eye(dim))
+    e = np.ones(dim)
+    QT = np.c_[Q, e].T
+    b = np.append(np.zeros(dim), 1.0)
+    pi, residuals, rank, s = np.linalg.lstsq(QT,b.T, rcond=None)
+    return pi
