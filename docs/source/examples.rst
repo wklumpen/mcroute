@@ -1,5 +1,4 @@
-Examples
+Examples 
 ========
 
-The following example applications are designed to demonstrate how to get
-started with MCRoute.
+You can find example workbooks at the project `GitHub <https://github.com/wklumpen/mcroute/tree/main/examples>`_

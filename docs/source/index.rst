@@ -22,7 +22,7 @@ from data.
 Audience
 ========
 This module was originally built to support a theoretical definition and
-reserach paper, but is intended to allow both researchers and practitioners,
+research paper, but is intended to allow both researchers and practitioners,
 specifically in the field of transportation, to create and analyze Markov chain
 networks. Initial features were deisgned to support specific use cases,
 generally around schedule adherence and path reliability on a transit network.
