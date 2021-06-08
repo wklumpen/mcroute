@@ -12,9 +12,14 @@ package also incldues utility functions for constructing transition matrices
 from data and theoretical distributions.
 
 ## Get Started
+You can take a look at the example workbooks available on 
+[GitHub](https://github.com/wklumpen/mcroute/tree/main/examples).
+
+## Documentation
+Documentation can be found for the latest release on [Read the Docs](http://mcroute.readthedocs.io/)
 
 ## Citing This Package
 Please cite the following paper (currently under preparation):
 
-**W. Klumpenhouwer** MCRoute: A Generalized Methodology for Modelling 
-Transportation Networks with Markov Chains. (Under Preparation)
+**W. Klumpenhouwer** Modelling Stochastic Transportation Networks with Markov 
+Chains. (Under Preparation)

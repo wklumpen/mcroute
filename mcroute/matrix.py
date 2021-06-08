@@ -26,6 +26,28 @@ import networkx as nx
 
 from mcroute.mcroute import DataError
 
+def _tbeta_cdf(x, a, b, alpha, beta):
+    """Calcualte a truncated beta distribution cumulative probability.
+
+    The beta distribution is supported only on the interval [0,1] and values
+    passed must therefore be scaled appropriately.
+
+    :param x: The CDF value to calculate. 
+    :type x: float
+    :param a: The lower bound of the distribution
+    :type a: float
+    :param b: The upper bound of the distribution
+    :type b: float
+    :param alpha: The alpha (or `a`) parameter. Must be strictly positive.
+    :type alpha: float
+    :param beta: The beta (or `b`) parameter. Must be strictly positive.
+    :type beta: float
+    :return: A cumulative probability
+    :rtype: float
+    """
+    return (sp.beta.cdf(x, alpha, beta) - sp.beta.cdf(a, alpha, beta))/ \
+        (sp.beta.cdf(b, alpha, beta) - sp.beta.cdf(a, alpha, beta))
+
 
 def uniform(state_space):
     """Create a unfiromally distributed transition probability matrix.
@@ -156,6 +178,69 @@ def truncexpon(state_space, mu=1.0, sigma=1.0):
         mtx.append(rowData)
     return np.array(mtx)
 
+
+def beta(state_space, alpha, beta):
+    """Create a beta distributed transition probability matrix accross
+    a given state space.
+
+    A reader is referred to https://en.wikipedia.org/wiki/Beta_distribution
+    for examples of the shapes that various values of alpha and beta will
+    produce.
+
+    The beta distribution's support lies on the interval [0,1]. To account for
+    this, values are first normalized based on the highest and lowest jumps
+    possible accross the entire matrix (the magnitude of which is the last value
+    in the state space minus the first). Then, the distribution is truncated
+    based on the available transition space in a given row of the matrix.
+
+    See https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.beta.html
+    for more information on the beta distribution.
+
+    :param state_space: The state space under which to build the matrix
+    :type state_space: :class:`mcroute.StateSpace`
+    :param alpha: The alpha (or `a`) parameter. Must be strictly positive.
+    :type alpha: float
+    :param beta: The beta (or `b`) parameter. Must be strictly positive.
+    :type beta: float
+    :return: A truncated beta matrix of transition probabilities.
+    :rtype: :class:`numpy.array`
+    """
+        # Start by grabbing the state_values.
+    state_values = state_space.values
+    mtx = []
+    tip = state_values[-1] - state_values[0]  # Largest possible jump in the mtx
+    toe = state_values[0] - state_values[-1]  # Smallest possible jump in mtx
+    span = tip - toe
+    print(toe, tip, span)
+    for r in range(state_space.size):
+        # Get the first state jump
+        rowData = []
+        print("Row", r)
+        # Most negative jump possible
+        a = state_values[0] - state_values[r]
+        a = (a - toe)/span
+        # Most positive jump possible
+        b = state_values[-1] - state_values[r]
+        b = (b - toe)/span
+        for c in range(state_space.size):
+            row = state_values[r]
+            col = state_values[c]
+            x = ((col - row) - toe)/span
+            print(x)
+            if c < state_space.size-1:
+                if c == 0: # First State
+                    p = _tbeta_cdf(x, a, b, alpha, beta)
+                else:  # Do the 'normal' thing
+                    p = _tbeta_cdf(x, a, b, alpha, beta) - \
+                        _tbeta_cdf(((state_values[c-1] - row) - toe)/span, a, b, alpha, beta)
+            elif c == state_space.size:  # Last state
+                p = _tbeta_cdf(x, a, b, alpha, beta)
+            rowData.append(p)
+
+        # Final step to ensure it sums to 1.
+        rowData[-1] = 1.0 - sum(rowData[:-1])
+        mtx.append(rowData)
+    return np.array(mtx)
 
 def identity(state_space):
     """Create an identity probability transition matrix.

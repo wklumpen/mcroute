@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="mcroute", # Replace with your own username
-    version="1.0.0",
+    version="1.1.0",
     author="Willem Klumpenhouwer",
     author_email="willem@klumpentown.com",
     description="Markov chain modelling of transportation networks.",
