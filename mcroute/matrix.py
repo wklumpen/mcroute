@@ -96,6 +96,66 @@ def truncnorm(state_space, mean=0, std=1):
         mtx.append(rowData)
     return np.array(mtx)
 
+def truncexpon(state_space, mu=1.0, sigma=1.0):
+    """Create a truncated exponentially distributed probability transition 
+    matrix accross a given state space.
+
+    Note that the exponential distribution only supports state values in the
+    positive domain. Other state values will be assigned a probabiliy of zero.
+
+    The mean and shape values used in these calculations refer to `state
+    transition values`. This means that the distributions created are centered
+    around a given state transition, and are shifted by each row.
+    
+    Note that this probability distribution is truncated so that any 
+    probabilities that fall outside the possible positive transition space in
+    each row are redistributed accross all probabilities within the allowed 
+    domain.
+
+    See https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.truncexpon.html
+    for more information on the truncated exponential distribution.
+
+    :param state_space: The state space under which to build the matrix
+    :type state_space: :class:`mcroute.StateSpace`
+    :param mu: The lambda (loc) of the exponential distribution, defaults to 1
+    :type mu: float, optional
+    :param sigma: The scale value of the exponential distribution, defaults to 1
+    :type sigma: float, optional
+    :return: A truncated exponential matrix of transition probabilities.
+    :rtype: :class:`numpy.array`
+    """
+    # Start by grabbing the state_values.
+    state_values = state_space.values
+    mtx = []
+    for r in range(state_space.size):
+        # The mean is that the delta between states is zero.
+        # Get the first state jump
+        rowData = []
+        # Most positive jump possible
+        b = state_values[-1] - state_values[r]
+        for c in range(state_space.size):
+            row = state_values[r]
+            col = state_values[c]
+            if c < state_space.size-1:
+                col = state_values[c]
+                if col - row < 0:
+                    # Negative values are set to zero.
+                    p = 0.0
+                else:
+                    if c == 0: # First State
+                        p = sp.truncexpon.cdf(col - row, b,  loc=mu, scale=sigma)
+                    else:  # Do the 'normal' thing
+                        p = sp.truncexpon.cdf(col - row, b, loc=mu, scale=sigma) - \
+                            sp.truncexpon.cdf(state_values[c-1] - row, b, loc=mu, scale=sigma)
+            elif c == state_space.size:  # Last state
+                p = 1-sp.truncexpon.cdf(col - row, b, loc=mu, scale=sigma)
+            rowData.append(p)
+
+        # Final step to ensure it sums to 1.
+        rowData[-1] = 1.0 - sum(rowData[:-1])
+        mtx.append(rowData)
+    return np.array(mtx)
+
 
 def identity(state_space):
     """Create an identity probability transition matrix.
