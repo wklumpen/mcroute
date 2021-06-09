@@ -26,7 +26,7 @@ import networkx as nx
 
 from mcroute.mcroute import DataError
 
-def _tbeta_cdf(x, a, b, alpha, beta):
+def _tbeta_cdf(x, a, b, alpha, beta) -> float:
     """Calcualte a truncated beta distribution cumulative probability.
 
     The beta distribution is supported only on the interval [0,1] and values
@@ -48,6 +48,19 @@ def _tbeta_cdf(x, a, b, alpha, beta):
     return (sp.beta.cdf(x, alpha, beta) - sp.beta.cdf(a, alpha, beta))/ \
         (sp.beta.cdf(b, alpha, beta) - sp.beta.cdf(a, alpha, beta))
 
+def _tlognorm_cdf(x, b, mu, sigma) -> float:
+    """Calculate a truncated log-normal distribution cumulative probability.
+
+    :param x: The CDF value to calculate
+    :type x: float
+    :param b: The upper bound of the distribtuion 
+    :type b: float
+    :param mu: the mu (loc)
+    :type mu: float
+    :param sigma: the sigma (s) value of the distribtuion
+    :type sigma: float
+    """
+    return sp.lognorm.cdf(x, sigma, loc=mu)/sp.lognorm.cdf(b, sigma, loc=mu)
 
 def uniform(state_space):
     """Create a unfiromally distributed transition probability matrix.
@@ -171,6 +184,65 @@ def truncexpon(state_space, mu=1.0, sigma=1.0):
                             sp.truncexpon.cdf(state_values[c-1] - row, b, loc=mu, scale=sigma)
             elif c == state_space.size:  # Last state
                 p = 1-sp.truncexpon.cdf(col - row, b, loc=mu, scale=sigma)
+            rowData.append(p)
+
+        # Final step to ensure it sums to 1.
+        rowData[-1] = 1.0 - sum(rowData[:-1])
+        mtx.append(rowData)
+    return np.array(mtx)
+
+def trunclognorm(state_space, mu=0, sigma=1):
+    """Create a truncated log-normally distributed probability transition 
+    matrix accross a given state space.
+
+    The parameters mu and sigma follow the definition used by Wikipedia: 
+    https://en.wikipedia.org/wiki/Log-normal_distribution. For conversion to
+    `scipy`'s format, `sigma` becomes `s`, `mu` becomes `loc`, and the Scipy
+    `scale` parameter is held as it's default 1.
+    
+    Note: The log-normal distribution only supports state values in the
+    positive domain. Other state values will be assigned a probabiliy of zero.
+    This probability distribution is truncated so that any probabilities that 
+    fall outside the possible positive transition space in each row are 
+    redistributed accross all probabilities within the allowed domain.
+
+    See https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.lognorm.html
+    for more information on the `scipy` lognormal distribution.
+
+    :param state_space: The state space under which to build the matrix
+    :type state_space: :class:`mcroute.StateSpace`
+    :param mu: The mu parameter (loc) of the log-normal distribtuion
+    :type mu: float, optional
+    :param sigma: The sigma value (s) of the log-normal distribution
+    :type sigma: float, optional
+    :return: A truncated lognormal matrix of transition probabilities.
+    :rtype: :class:`numpy.array`
+    """
+    # Start by grabbing the state_values.
+    state_values = state_space.values
+    mtx = []
+    for r in range(state_space.size):
+        # The mean is that the delta between states is zero.
+        # Get the first state jump
+        rowData = []
+        # Most positive jump possible
+        b = state_values[-1] - state_values[r]
+        for c in range(state_space.size):
+            row = state_values[r]
+            col = state_values[c]
+            if c < state_space.size-1:
+                col = state_values[c]
+                if col - row < 0:
+                    # Negative values are set to zero.
+                    p = 0.0
+                else:
+                    if c == 0: # First State
+                        p = _tlognorm_cdf(col - row, b,  mu, sigma)
+                    else:  # Do the 'normal' thing
+                        p = _tlognorm_cdf(col - row, b, mu, sigma) - \
+                            _tlognorm_cdf(state_values[c-1] - row, b, mu, sigma)
+            elif c == state_space.size:  # Last state
+                p = 1-_tlognorm_cdf(col - row, b, mu, sigma)
             rowData.append(p)
 
         # Final step to ensure it sums to 1.
