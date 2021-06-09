@@ -1,7 +1,7 @@
 Installation 
 ============
 
-MCRoute requires Python 3.6 or above. We have assumed that you have a default
+MCRoute requires Python 3.8 or above. We have assumed that you have a default
 Python environment already configured on your computer, and you intend to
 install ``mcroute`` inside of it.
 
