@@ -21,7 +21,7 @@ setuptools.setup(
         "Intended Audience :: Science/Research",
         "Natural Language :: English",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.8',
     install_requires=[
         'decorator',
         'networkx',
